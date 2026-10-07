@@ -1,0 +1,21 @@
+d3acat is MIT licensed; see LICENSE. What follows is everything in the
+binary that someone else made.
+
+Third-party data, checked in and embedded:
+  assets/schemaDirt3.xml              Ego-Engine-Modding
+    The DiRT 3 database layout. src/d3/database.odin reads database.bin
+    through it. Taken as-is from
+    github.com/EgoEngineModding/Ego-Engine-Modding,
+    src/EgoDatabaseEditor/schema/schemaDirt3.xml
+
+Work we learned from. No code of theirs is in the binary:
+  NefsEdit / NefsLib                  Victor Bush
+    The NeFS archive layout that src/nefs reads and rebuilds, with DiRT 3's
+    public header key. github.com/victorbush/ego.nefsedit
+
+  Grid2Bypass                         ismellyu
+    The GRID 2 code self-check, which mapped the same check in DiRT 3 and
+    showed that an exe patch on disk passes it. github.com/ISmellYu/Grid2Bypass
+
+d3acat ships no DiRT 3 data. Every file it writes is made from the player's
+own install.
