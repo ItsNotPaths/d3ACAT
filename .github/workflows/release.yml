@@ -1,0 +1,79 @@
+name: release
+
+# Launched by ./release.sh --public --version <x.y.z> --notes <text>.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version, without the leading v"
+        required: true
+      notes:
+        description: "Release notes"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Odin
+        run: |
+          mkdir -p "$RUNNER_TEMP/odin"
+          curl -fsSL "https://github.com/odin-lang/Odin/releases/download/dev-2026-10/odin-linux-amd64-dev-2026-10.tar.gz" \
+            | tar xz --strip-components=1 -C "$RUNNER_TEMP/odin"
+          echo "$RUNNER_TEMP/odin" >> "$GITHUB_PATH"
+
+      - name: Test
+        run: ./test.sh
+
+      - name: Build
+        run: |
+          mkdir -p build
+          odin build src/app -o:speed -out:build/d3acat \
+            -define:D3ACAT_VERSION="_${{ inputs.version }}" \
+            -define:D3ACAT_COMMIT="_${GITHUB_SHA::7}"
+          strip --strip-all build/d3acat
+
+      - name: Check what it says it is
+        run: |
+          want="d3acat ${{ inputs.version }} (${GITHUB_SHA::7})"
+          got=$(./build/d3acat --version)
+          [ "$got" = "$want" ] || { echo "::error::got '$got', wanted '$want'"; exit 1; }
+
+      - name: Name the artifact
+        run: mv build/d3acat d3acat-${{ inputs.version }}-linux-x86_64
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: d3acat-${{ inputs.version }}-linux-x86_64
+
+  windows:
+    uses: ./.github/workflows/windows.yml
+    with:
+      version: ${{ inputs.version }}
+
+  # Nothing is published until both platforms have built.
+  publish:
+    needs: [linux, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v${{ inputs.version }}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "d3acat ${{ inputs.version }}" \
+            --notes "${{ inputs.notes }}" \
+            --target "$GITHUB_SHA" \
+            dist/*

@@ -1,0 +1,63 @@
+name: windows
+
+# The Windows half of a release; release.yml calls it. `workflow_dispatch`
+# runs it alone.
+on:
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        required: false
+        default: dev
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      # Odin links with MSVC's link.exe, which is on PATH only after vcvars.
+      - name: MSVC environment
+        shell: cmd
+        run: |
+          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do (
+            call "%%i\VC\Auxiliary\Build\vcvars64.bat"
+          )
+          set >> "%GITHUB_ENV%"
+
+      - name: Odin
+        run: |
+          curl -fsSL -o odin.zip \
+            "https://github.com/odin-lang/Odin/releases/download/dev-2026-10/odin-windows-amd64-dev-2026-10.zip"
+          7z x odin.zip -oodin-dist > /dev/null
+          # The zip's top-level directory name is not stable across releases.
+          root=$(find odin-dist -maxdepth 2 -name odin.exe -printf '%h\n' | head -1)
+          echo "$(cygpath -w "$root")" >> "$GITHUB_PATH"
+
+      - name: Build
+        run: |
+          mkdir -p build
+          odin build src/app -o:speed -out:build/d3acat.exe \
+            -define:D3ACAT_VERSION="_${{ inputs.version || 'dev' }}" \
+            -define:D3ACAT_COMMIT="_${GITHUB_SHA::7}"
+          # Odin's -out: does not always land where asked on this platform.
+          if [ ! -f build/d3acat.exe ]; then
+            found=$(find . -maxdepth 3 -name 'd3acat*.exe' -print -quit)
+            [ -n "$found" ] || { echo "::error::odin produced no exe"; exit 1; }
+            mv "$found" build/d3acat.exe
+          fi
+
+      - name: Check it runs
+        run: ./build/d3acat.exe --version
+
+      - name: Name the artifact
+        run: mv build/d3acat.exe "d3acat-${{ inputs.version || 'dev' }}-windows-x86_64.exe"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: d3acat-${{ inputs.version || 'dev' }}-windows-x86_64.exe
